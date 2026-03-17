@@ -292,4 +292,4 @@ export default function Home({ children, narrations, beautyLoop, termPlan, daySc
         <h2 className="screen-title">Living <em>Rhythm</em></h2>
         <p className="screen-sub">{today}</p>
       </div>
-      <TopStrip ac
+      <TopStrip activeHabitNames={activeHabitNames} narrations={narrations} outdoorMins={outdoorMins} setOutdoorMins={setOutdoorMins} />
