@@ -448,7 +448,7 @@ export default function Planner({ termPlan, setTermPlan, beautyLoop, setBeautyLo
       <div className="tab-content">
         {activeTab === 'year'   && <YearCalendar yearPlan={yearPlan || {}} setYearPlan={setYearPlan || (() => {})} />}
         {activeTab === 'beauty' && <BeautyLoopEditor beautyLoop={beautyLoop} setBeautyLoop={setBeautyLoop} />}
-        {DAYS.map(d => activeTab === d && (
+        {DAYS.map d
           <DayScheduleEditor key={d} day={d} blocks={daySchedules[d] || []} setBlocks={setDayBlocks(d)} />
         ))}
       </div>
