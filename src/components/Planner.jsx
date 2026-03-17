@@ -1,456 +1,327 @@
-// ── PLANNER SCREEN ────────────────────────────────────────────────────────────
-// Edit this file to change the Term Planner, Year Calendar, and Beauty Loop.
+// ── HOME SCREEN ────────────────────────────────────────────────────────────────
+// Edit this file to change the Home dashboard layout and content.
 
 import React, { useState } from 'react'
-import { BLOCK_TYPES, DAYS } from '../shared/constants.js'
-import { uid, save } from '../shared/helpers.js'
+import { BLOCK_TYPES, CM_HABITS } from '../shared/constants.js'
+import { todayStr, save, load } from '../shared/helpers.js'
 import * as Icons from '../shared/Icons.jsx'
 
-// ── BEAUTY LOOP SUBJECTS ──────────────────────────────────────────────────────
-const BEAUTY_LOOP_SUBJECTS = [
-  { id: 'composer',    label: 'Composer Study',   prompt: 'e.g. Dvořák — New World Symphony' },
-  { id: 'picture',     label: 'Picture Study',    prompt: 'e.g. Constable — landscape series' },
-  { id: 'hymn',        label: 'Hymn Study',       prompt: 'e.g. How Great Thou Art' },
-  { id: 'folksong',    label: 'Folk Song',        prompt: 'e.g. Shenandoah' },
-  { id: 'handicraft',  label: 'Handicraft',       prompt: 'e.g. Cross-stitch, knitting, watercolor' },
-  { id: 'poetry',      label: 'Poetry',           prompt: 'e.g. Robert Frost — seasonal selection' },
-  { id: 'recitation',  label: 'Recitation',       prompt: 'e.g. Psalm 23, a Shakespeare sonnet' },
-  { id: 'naturelore',  label: 'Nature Lore',      prompt: 'e.g. Comstock — insects chapter' },
-  { id: 'shakespeare', label: 'Shakespeare',      prompt: 'e.g. A Midsummer Night\'s Dream' },
-  { id: 'fables',      label: 'Fables & Tales',   prompt: 'e.g. Aesop, fairy tales, folk tales' },
-  { id: 'habits',      label: 'Habit Study',      prompt: 'e.g. Attention — this term\'s focus habit' },
-  { id: 'geography',   label: 'Geography',        prompt: 'e.g. Map study — South America' },
-]
-
-const MONTH_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const DAY_LABELS  = ['S','M','T','W','T','F','S']
-const TERM_COLORS = ['#C29B61','#7a8f6f','#4a5f73','#8a5a3a','#6b4c8a','#5a7a6e']
-
-function dateKey(date) { return date.toISOString().slice(0, 10) }
-
-function getWeeksInYear(year) {
-  const weeks = []
-  const jan1 = new Date(year, 0, 1)
-  const startDay = jan1.getDay()
-  const d = new Date(year, 0, 1 - (startDay === 0 ? 6 : startDay - 1))
-  let weekNum = 1
-  while (true) {
-    const days = []
-    for (let i = 0; i < 7; i++) {
-      days.push(new Date(d))
-      d.setDate(d.getDate() + 1)
-    }
-    if (days.some(day => day.getFullYear() === year)) {
-      weeks.push({ weekNum, days })
-      weekNum++
-    }
-    if (d.getFullYear() > year) break
-  }
-  return weeks
+const dayOfWeek = () => {
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  return days[new Date().getDay()]
 }
 
-// ── YEAR CALENDAR ─────────────────────────────────────────────────────────────
-function YearCalendar({ yearPlan, setYearPlan }) {
-  const year = new Date().getFullYear()
-  const weeks = getWeeksInYear(year)
-  const [focusedTermId, setFocusedTermId] = useState(null)
-
-  const schoolWeeks = yearPlan.schoolWeeks || {}
-  const offDays     = yearPlan.offDays     || {}
-  const terms       = yearPlan.terms       || []
-
-  const schoolWeekCount = Object.values(schoolWeeks).filter(Boolean).length
-  const offDayCount     = Object.values(offDays).filter(Boolean).length
-
-  function persist(patch) {
-    const next = { ...yearPlan, ...patch }
-    setYearPlan(next)
-    save('lrp-year-plan', next)
+function TopStrip({ activeHabitNames, narrations, outdoorMins, setOutdoorMins }) {
+  const activeHabit = CM_HABITS.find(h => activeHabitNames?.includes(h.name))
+  const weekNarrations = Object.values(narrations || {}).flat().filter(n => {
+    const d = new Date(n.date); const now = new Date()
+    return (now - d) < 7 * 24 * 60 * 60 * 1000
+  }).length
+  const bump = (amt) => {
+    const next = Math.max(0, outdoorMins + amt)
+    setOutdoorMins(next)
+    save(`lrp-outdoor-mins-${todayStr()}`, next)
   }
+  return (
+    <div className="top-strip">
+      <div className="strip-tile strip-tile-nature">
+        <div className="strip-tile-label">Outside Today</div>
+        <div className="strip-tile-main">
+          <button className="strip-counter-btn" onClick={() => bump(-5)}>−</button>
+          <span className="strip-counter-val">{outdoorMins}m</span>
+          <button className="strip-counter-btn" onClick={() => bump(5)}>+</button>
+        </div>
+      </div>
+      <div className="strip-tile strip-tile-gold">
+        <div className="strip-tile-label">Habit</div>
+        <div className="strip-tile-habit">
+          {activeHabit ? activeHabit.name : <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>None set</span>}
+        </div>
+      </div>
+      <div className="strip-tile strip-tile-navy">
+        <div className="strip-tile-label">This Week</div>
+        <div className="strip-tile-num">{weekNarrations}</div>
+        <div className="strip-tile-sublabel">narrations</div>
+      </div>
+    </div>
+  )
+}
 
-  function toggleWeek(weekNum) {
-    persist({ schoolWeeks: { ...schoolWeeks, [weekNum]: !schoolWeeks[weekNum] } })
-  }
-
-  function toggleDay(key) {
-    persist({ offDays: { ...offDays, [key]: !offDays[key] } })
-  }
-
-  function addTerm() {
-    const next = [...terms, { id: uid(), name: `Term ${terms.length + 1}`, weekNums: [], color: TERM_COLORS[terms.length % TERM_COLORS.length], theme: '', books: '' }]
-    persist({ terms: next })
-  }
-
-  function updateTerm(id, k, v) {
-    persist({ terms: terms.map(t => t.id === id ? { ...t, [k]: v } : t) })
-  }
-
-  function removeTerm(id) {
-    persist({ terms: terms.filter(t => t.id !== id) })
-    if (focusedTermId === id) setFocusedTermId(null)
-  }
-
-  function toggleWeekInTerm(termId, weekNum) {
-    persist({
-      terms: terms.map(t => {
-        if (t.id !== termId) return t
-        const wns = t.weekNums.includes(weekNum)
-          ? t.weekNums.filter(w => w !== weekNum)
-          : [...t.weekNums, weekNum].sort((a, b) => a - b)
-        return { ...t, weekNums: wns }
+function OutdoorWeeklyCircle({ outdoorMins }) {
+  const goalHrs = 15
+  const weekMins = (() => {
+    let total = outdoorMins
+    try {
+      const weekStart = new Date()
+      weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1))
+      weekStart.setHours(0,0,0,0)
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('lrp-outdoor-mins-') && k !== `lrp-outdoor-mins-${todayStr()}`) {
+          const dateStr = k.replace('lrp-outdoor-mins-', '')
+          const d = new Date(dateStr)
+          if (d >= weekStart) total += parseInt(localStorage.getItem(k) || '0')
+        }
       })
-    })
+    } catch {}
+    return total
+  })()
+  const hrs = weekMins / 60
+  const pct = Math.min(hrs / goalHrs, 1)
+  const r = 48; const circ = 2 * Math.PI * r
+  const reached = hrs >= goalHrs
+  return (
+    <div style={{ background: 'var(--nature-bg)', border: '1px solid var(--nature)', borderRadius: 'var(--r)', padding: '0.85rem 1rem', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+      <div style={{ position: 'relative', width: 110, height: 110, flexShrink: 0 }}>
+        <svg width="110" height="110" viewBox="0 0 110 110" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="55" cy="55" r={r} fill="none" stroke="var(--sage-bg)" strokeWidth="9" />
+          <circle cx="55" cy="55" r={r} fill="none" stroke={reached ? 'var(--gold)' : 'var(--nature)'} strokeWidth="9" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+        </svg>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', color: 'var(--navy)', lineHeight: 1, fontWeight: 700 }}>
+            {hrs < 1 ? `${weekMins}m` : `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)}h`}
+          </div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.58rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>of {goalHrs}h</div>
+        </div>
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--navy)', marginBottom: '0.25rem' }}>
+          {reached ? 'Weekly goal reached ✦' : `${(goalHrs - hrs).toFixed(1)}h to go this week`}
+        </div>
+        <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+          Weekly outdoor goal<br />
+          <span style={{ color: 'var(--nature)', fontWeight: 700 }}>{goalHrs} hours</span> — Charlotte Mason standard
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TodaySchedule({ daySchedules }) {
+  const today = dayOfWeek()
+  const blocks = daySchedules?.[today] || []
+  const storageKey = `lrp-daily-${todayStr()}`
+  const [state, setState] = useState(() => load(storageKey, { checked: {}, notes: {} }))
+  const [editingNote, setEditingNote] = useState(null)
+  const toggle = (id) => {
+    const next = { ...state, checked: { ...state.checked, [id]: !state.checked[id] } }
+    setState(next); save(storageKey, next)
   }
-
-  // Group weeks by month
-  const weeksByMonth = {}
-  weeks.forEach(week => {
-    const m = week.days[4].getMonth() // Thursday
-    if (!weeksByMonth[m]) weeksByMonth[m] = []
-    weeksByMonth[m].push(week)
-  })
-
-  const focusedTerm = terms.find(t => t.id === focusedTermId)
-
-  // ── Term detail view ───────────────────────────────────────────────────────
-  if (focusedTerm) {
-    const termWeeks = weeks.filter(w => focusedTerm.weekNums.includes(w.weekNum))
-    const termDayCount = termWeeks.reduce((s, w) =>
-      s + w.days.filter(d => d.getDay() >= 1 && d.getDay() <= 5 && !offDays[dateKey(d)]).length, 0)
-    const schoolWeeksList = weeks.filter(w => schoolWeeks[w.weekNum])
-
+  const saveNote = (id, val) => {
+    const next = { ...state, notes: { ...state.notes, [id]: val } }
+    setState(next); save(storageKey, next)
+  }
+  if (!blocks.length) return (
+    <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+      <p style={{ fontStyle: 'italic' }}>No schedule for {today}. Rest well.</p>
+    </div>
+  )
+  const pending = blocks.filter(b => !state.checked[b.id])
+  const completed = blocks.filter(b => state.checked[b.id])
+  const BlockRow = ({ b, done }) => {
+    const bt = BLOCK_TYPES[b.type] || BLOCK_TYPES.custom
+    const isEditing = editingNote === b.id
+    const note = state.notes[b.id] || ''
     return (
-      <div>
-        <button className="btn btn-outline btn-sm" style={{ marginBottom: '1rem' }} onClick={() => setFocusedTermId(null)}>
-          ← Back to Year
-        </button>
-
-        <div className="card" style={{ borderLeft: `4px solid ${focusedTerm.color}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <input className="form-input" style={{ flex: 1, fontSize: '1.1rem', fontFamily: 'var(--font-display)', fontWeight: 600, border: 'none', padding: 0, background: 'transparent', color: 'var(--navy)' }}
-              value={focusedTerm.name} onChange={e => updateTerm(focusedTerm.id, 'name', e.target.value)} />
-            <button className="icon-btn" onClick={() => removeTerm(focusedTerm.id)}><Icons.Trash size={14} /></button>
+      <div className={`check-block ${done ? 'check-block-done' : ''}`} style={{ borderLeft: `3px solid ${done ? 'var(--sage-lt)' : bt.color}`, background: done ? 'var(--sage-bg)' : bt.bg }}>
+        <div className="check-block-row">
+          <button className={`check-circle ${done ? 'checked' : ''}`} onClick={() => toggle(b.id)}>
+            {done && <Icons.Check size={13} color="white" />}
+          </button>
+          <span className="check-time">{b.time}</span>
+          <div className={`check-items ${done ? 'check-items-done' : ''}`}>
+            {b.items.map((item, i) => <span key={i}>{item}</span>)}
           </div>
-
-          <div style={{ display: 'flex', gap: '0.65rem', marginBottom: '0.85rem' }}>
-            <div className="stat-card" style={{ flex: 1 }}>
-              <div className="stat-num" style={{ color: focusedTerm.color }}>{focusedTerm.weekNums.length}</div>
-              <div className="stat-label">Weeks</div>
-            </div>
-            <div className="stat-card" style={{ flex: 1 }}>
-              <div className="stat-num" style={{ color: 'var(--gold)' }}>{termDayCount}</div>
-              <div className="stat-label">School Days</div>
-            </div>
-          </div>
-
-          <label className="form-label">Term Theme
-            <input className="form-input" value={focusedTerm.theme || ''} onChange={e => updateTerm(focusedTerm.id, 'theme', e.target.value)} placeholder="e.g. Colonial America…" />
-          </label>
-          <label className="form-label" style={{ marginTop: '0.5rem' }}>Living Books
-            <textarea className="form-input" rows={2} value={focusedTerm.books || ''} onChange={e => updateTerm(focusedTerm.id, 'books', e.target.value)} placeholder="Main living books for this term…" />
-          </label>
+          <button className="icon-btn" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={() => setEditingNote(isEditing ? null : b.id)}>
+            <Icons.Pen size={13} color={note ? 'var(--gold)' : 'var(--muted)'} />
+          </button>
         </div>
-
-        <h3 className="section-label">Assign School Weeks to This Term</h3>
-        {schoolWeeksList.length === 0 && (
-          <p className="card-note">Go back to Year view and tap week numbers to mark your school weeks first.</p>
+        {isEditing && (
+          <div className="check-note-area">
+            <textarea className="form-input check-note-input" rows={2} autoFocus placeholder="What did we cover? Any notes…" value={note} onChange={e => saveNote(b.id, e.target.value)} onBlur={() => setEditingNote(null)} />
+          </div>
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-          {schoolWeeksList.map(w => {
-            const inTerm = focusedTerm.weekNums.includes(w.weekNum)
-            const mon = w.days[1]
-            return (
-              <button key={w.weekNum}
-                onClick={() => toggleWeekInTerm(focusedTerm.id, w.weekNum)}
-                style={{
-                  padding: '0.35rem 0.65rem', borderRadius: 'var(--r-sm)',
-                  border: `2px solid ${inTerm ? focusedTerm.color : '#ddd8ce'}`,
-                  background: inTerm ? focusedTerm.color : 'var(--white)',
-                  color: inTerm ? 'white' : 'var(--muted)',
-                  fontFamily: 'var(--font-sans)', fontSize: '0.7rem', cursor: 'pointer', transition: 'all 0.15s',
-                }}>
-                Wk {w.weekNum} · {mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </button>
-            )
-          })}
-        </div>
+        {!isEditing && note && <p className="check-note-preview" onClick={() => setEditingNote(b.id)}>{note}</p>}
       </div>
     )
   }
-
-  // ── Year view ──────────────────────────────────────────────────────────────
   return (
     <div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}>
-        <div className="stat-card" style={{ flex: 1 }}>
-          <div className="stat-num" style={{ color: 'var(--sage)' }}>{schoolWeekCount}</div>
-          <div className="stat-label">School Weeks</div>
+      <div className="card" style={{ padding: '0.75rem' }}>
+        <h3 className="card-title" style={{ padding: '0 0.25rem', marginBottom: '0.5rem' }}>
+          Today — {today}
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.75rem', fontWeight: 400, color: 'var(--muted)', marginLeft: '0.5rem' }}>{completed.length}/{blocks.length} done</span>
+        </h3>
+        <div className="progress-bar-outer" style={{ marginBottom: '0.65rem' }}>
+          <div className="progress-bar-inner" style={{ width: `${blocks.length ? (completed.length / blocks.length) * 100 : 0}%` }} />
         </div>
-        <div className="stat-card" style={{ flex: 1 }}>
-          <div className="stat-num" style={{ color: 'var(--red)' }}>{offDayCount}</div>
-          <div className="stat-label">Days Off</div>
-        </div>
-        <div className="stat-card" style={{ flex: 1 }}>
-          <div className="stat-num" style={{ color: 'var(--navy)' }}>{terms.length}</div>
-          <div className="stat-label">Terms</div>
+        <div className="check-list">
+          {pending.map(b => <BlockRow key={b.id} b={b} done={false} />)}
+          {pending.length === 0 && <p style={{ textAlign: 'center', color: 'var(--sage)', fontStyle: 'italic', padding: '1rem 0', fontSize: '0.95rem' }}>✦ Everything done for today!</p>}
         </div>
       </div>
+      {completed.length > 0 && (
+        <div className="card card-sage" style={{ padding: '0.75rem' }}>
+          <h3 className="card-title" style={{ padding: '0 0.25rem', marginBottom: '0.5rem', color: 'var(--sage)' }}>Completed ✓</h3>
+          <div className="check-list">{completed.map(b => <BlockRow key={b.id} b={b} done={true} />)}</div>
+        </div>
+      )}
+    </div>
+  )
+}
 
-      <div className="card card-sage" style={{ marginBottom: '0.85rem', padding: '0.75rem 1rem' }}>
-        <p style={{ fontSize: '0.85rem', color: 'var(--ink)', lineHeight: 1.6 }}>
-          <strong>Tap a week number</strong> to mark it as a school week (highlighted).
-          <strong> Tap a school day</strong> to mark it as a day off (red).
-          Then create terms below and assign weeks to them.
-        </p>
+const DEFAULT_MORNING = [
+  { id: 'm1', icon: '✝', label: 'Bible & Prayer', desc: 'Read, narrate, or copy a passage' },
+  { id: 'm2', icon: '♪', label: 'Memory Verse / Hymn', desc: 'Recite this week\'s selection' },
+  { id: 'm3', icon: '✒', label: 'Copywork', desc: 'One careful line from your copywork passage' },
+  { id: 'm4', icon: '◉', label: 'Morning Reading', desc: 'Independent living book reading' },
+]
+
+function MorningAnchor() {
+  const [open, setOpen] = useState(true)
+  const [items] = useState(() => load('lrp-morning-items', DEFAULT_MORNING))
+  const [checked, setChecked] = useState(() => load(`lrp-morning-checked-${todayStr()}`, {}))
+  const toggle = (id) => {
+    const next = { ...checked, [id]: !checked[id] }
+    setChecked(next); save(`lrp-morning-checked-${todayStr()}`, next)
+  }
+  const doneCount = items.filter(i => checked[i.id]).length
+  const allDone = doneCount === items.length && items.length > 0
+  const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0
+  return (
+    <div style={{ border: '1.5px solid var(--gold-lt)', borderRadius: 'var(--r)', background: 'linear-gradient(135deg, #fdf8ef, #faf6ee)', marginBottom: '0.85rem', overflow: 'hidden' }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--gold-lt)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '1rem', flexShrink: 0 }}>◉</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--navy)' }}>Morning Anchor</div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.62rem', color: 'var(--muted)' }}>{allDone ? 'All done ✦' : `${doneCount} of ${items.length} complete`}</div>
+        </div>
+        <span style={{ color: 'var(--gold)', fontSize: '0.8rem', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
       </div>
-
-      {/* Month grids */}
-      {Object.entries(weeksByMonth).map(([monthIdx, monthWeeks]) => (
-        <div key={monthIdx} style={{ marginBottom: '1.1rem' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--navy)', fontWeight: 600, marginBottom: '0.3rem' }}>
-            {MONTH_FULL[monthIdx]}
+      {open && (
+        <div style={{ borderTop: '1px solid var(--gold-lt)' }}>
+          <div style={{ height: 4, background: 'var(--gold-lt)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'var(--gold)', width: `${pct}%`, transition: 'width 0.4s ease' }} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 2, marginBottom: 2 }}>
-            <div />
-            {DAY_LABELS.map((d, i) => (
-              <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--font-sans)', fontSize: '0.55rem', color: 'var(--muted)', fontWeight: 700 }}>{d}</div>
+          <div style={{ padding: '0.5rem 1rem' }}>
+            {items.map(item => (
+              <div key={item.id} onClick={() => toggle(item.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 0', borderBottom: '1px solid rgba(194,155,97,0.12)', cursor: 'pointer' }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: `1.5px solid ${checked[item.id] ? 'var(--gold)' : 'var(--gold-lt)'}`, background: checked[item.id] ? 'var(--gold)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s' }}>
+                  {checked[item.id] && <span style={{ color: 'white', fontSize: '0.75rem', lineHeight: 1 }}>✓</span>}
+                </div>
+                <div style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.88rem', color: 'var(--navy)', textDecoration: checked[item.id] ? 'line-through' : 'none', opacity: checked[item.id] ? 0.5 : 1 }}>{item.label}</div>
+                  <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.65rem', color: 'var(--muted)', fontStyle: 'italic' }}>{item.desc}</div>
+                </div>
+              </div>
             ))}
           </div>
-          {monthWeeks.map(week => {
-            const isSchool = !!schoolWeeks[week.weekNum]
-            const termForWeek = terms.find(t => t.weekNums.includes(week.weekNum))
-            return (
-              <div key={week.weekNum} style={{ display: 'grid', gridTemplateColumns: '28px repeat(7, 1fr)', gap: 2, marginBottom: 2 }}>
-                <button onClick={() => toggleWeek(week.weekNum)}
-                  style={{
-                    background: isSchool ? (termForWeek?.color || 'var(--sage)') : 'var(--sage-bg)',
-                    border: 'none', borderRadius: 3, cursor: 'pointer',
-                    fontFamily: 'var(--font-sans)', fontSize: '0.52rem', fontWeight: 700,
-                    color: isSchool ? 'white' : 'var(--muted)', lineHeight: 1,
-                    padding: '2px 1px', transition: 'all 0.15s',
-                  }}>
-                  {week.weekNum}
-                </button>
-                {week.days.map((day, di) => {
-                  const isThisYear = day.getFullYear() === year
-                  const isWeekend = di === 0 || di === 6
-                  const key = dateKey(day)
-                  const isOff = !!offDays[key]
-                  const isToday = key === dateKey(new Date())
-                  return (
-                    <button key={di}
-                      onClick={() => isThisYear && isSchool && !isWeekend && toggleDay(key)}
-                      style={{
-                        aspectRatio: '1', borderRadius: 3, padding: 0, minWidth: 0,
-                        border: isToday ? '2px solid var(--gold)' : '1px solid transparent',
-                        background: !isThisYear ? 'transparent'
-                          : isOff ? '#fdecea'
-                          : isSchool && !isWeekend ? (termForWeek ? termForWeek.color + '30' : 'var(--sage-bg)')
-                          : isWeekend ? 'var(--lilac)'
-                          : '#f5f2ee',
-                        cursor: isThisYear && isSchool && !isWeekend ? 'pointer' : 'default',
-                        fontFamily: 'var(--font-sans)', fontSize: '0.58rem',
-                        color: !isThisYear ? 'transparent'
-                          : isOff ? 'var(--red)'
-                          : isToday ? 'var(--gold)'
-                          : isWeekend ? '#ccc'
-                          : isSchool ? 'var(--navy)' : '#bbb',
-                        fontWeight: isToday ? 700 : 400,
-                        transition: 'all 0.12s',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                      {isThisYear ? day.getDate() : ''}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
+          {allDone && <div style={{ padding: '0.6rem 1rem', textAlign: 'center', fontFamily: 'var(--font-serif)', fontSize: '0.88rem', color: 'var(--gold)', fontStyle: 'italic', borderTop: '1px solid var(--gold-lt)' }}>Morning Anchor complete ✦</div>}
         </div>
-      ))}
+      )}
+    </div>
+  )
+}
 
-      {/* Terms list */}
-      <h3 className="section-label" style={{ marginTop: '1.5rem' }}>Terms</h3>
-      {terms.map(term => (
-        <div key={term.id} className="card"
-          style={{ borderLeft: `4px solid ${term.color}`, cursor: 'pointer', marginBottom: '0.5rem' }}
-          onClick={() => setFocusedTermId(term.id)}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'var(--navy)', fontWeight: 600 }}>{term.name}</div>
-              <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2 }}>
-                {term.weekNums.length} weeks{term.theme ? ` · ${term.theme}` : ''} · tap to edit
-              </div>
-            </div>
-            <Icons.ChevD size={16} color="var(--muted)" />
-          </div>
+const MOTHER_CULTURE_PROMPTS = [
+  'What are you reading for yourself right now — not for school, just for you?',
+  '"The mother\'s education is her most priceless gift to her children." — Charlotte Mason. What are you learning this week?',
+  'Ten minutes with a real book today. What will you read?',
+  'What idea has been living in you lately — from something you\'ve read or heard?',
+  'Copy one sentence that struck you this week. Why did it stay with you?',
+  '"A mother who keeps herself mentally alive gives her children something no curriculum can." What are you feeding your mind?',
+  'Nature observation for you today: find one thing and really look at it for five minutes.',
+  'What poem have you read recently? If none — find one today. Just one.',
+  'What are you curious about right now? Not for a lesson. For yourself.',
+  '"Self-education is the only possible education." — Charlotte Mason. Where are you educating yourself lately?',
+  'Is there a book you\'ve been meaning to start? Today is a good day.',
+  'What beauty did you notice this week — in nature, in a piece of music, in a face?',
+  'Write down one thing you want to remember from your reading this month.',
+  'What are you learning about your own habits of mind lately?',
+  'Find a passage of Scripture or poetry to copy today. Let your hand slow your mind down.',
+  'What conversation has stayed with you this week? Why?',
+  '"Education is an atmosphere." What atmosphere are you living in right now?',
+  'When did you last sit outside with nothing to do but look? Could you do that today?',
+  'What subject — history, science, art, music — are you drawn to explore for yourself right now?',
+  'What is one thing you\'ve read in the last month that changed how you see something?',
+  'Write one sentence about what matters most to you in your homeschool right now.',
+  'What are you grateful for in this season of mothering and teaching?',
+  '"The mind feeds on ideas." What ideas are you feeding yours with?',
+  'Is there a documentary, lecture, or podcast feeding your mind right now? What is it?',
+  'What is your current living book — the one written with genuine delight by someone who loves the subject?',
+  'Nature journaling for you: sketch or describe one thing from your yard or walk today.',
+  'What habit of your own are you working on this month?',
+  '"Never be within doors when you can rightly be without." Did you get outside today?',
+  'What would you study if you had one free hour today — just for the love of it?',
+  'Write a letter to yourself about what this season of your life is teaching you.',
+]
+
+function MotherCulture() {
+  const [open, setOpen] = useState(false)
+  const prompt = MOTHER_CULTURE_PROMPTS[(new Date().getDate() - 1) % MOTHER_CULTURE_PROMPTS.length]
+  const [note, setNote] = useState(() => load(`lrp-mc-${todayStr()}`, ''))
+  const saveNote = (val) => { setNote(val); save(`lrp-mc-${todayStr()}`, val) }
+  return (
+    <div style={{ border: '1.5px solid var(--lilac)', borderRadius: 'var(--r)', background: 'var(--white)', marginBottom: '0.85rem', overflow: 'hidden' }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--lilac)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--navy-lt)', fontSize: '1rem', flexShrink: 0 }}>✦</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', color: 'var(--navy)' }}>Mother Culture</div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.62rem', color: 'var(--muted)', fontStyle: 'italic' }}>Your own reading & attention</div>
         </div>
-      ))}
-      <button className="btn btn-outline" style={{ width: '100%', justifyContent: 'center', marginTop: '0.4rem' }} onClick={addTerm}>
-        <Icons.Plus size={14} />&nbsp;Add Term
-      </button>
+        <span style={{ color: 'var(--muted)', fontSize: '0.8rem', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ borderTop: '1px solid var(--lilac)', padding: '0.85rem 1rem' }}>
+          <p style={{ fontFamily: 'var(--font-serif)', fontSize: '0.95rem', color: 'var(--navy)', fontStyle: 'italic', lineHeight: 1.65, marginBottom: '0.75rem' }}>{prompt}</p>
+          <textarea value={note} onChange={e => saveNote(e.target.value)} placeholder="A thought, a sentence you want to keep, what you're reading…" style={{ width: '100%', minHeight: 72, border: '1.5px solid var(--lilac)', borderRadius: 'var(--r-sm)', padding: '0.5rem 0.75rem', fontFamily: 'var(--font-serif)', fontSize: '0.92rem', color: 'var(--ink)', lineHeight: 1.6, resize: 'vertical', outline: 'none', background: 'var(--cream)' }} />
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: '0.6rem', color: 'var(--muted)', marginTop: '0.3rem', textAlign: 'right' }}>auto-saved · prompt {new Date().getDate()} of 30</div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── BEAUTY LOOP EDITOR ────────────────────────────────────────────────────────
-function BeautyLoopEditor({ beautyLoop, setBeautyLoop }) {
-  const [saved, setSaved] = useState(false)
-
-  const loopData = beautyLoop.length > 0
-    ? beautyLoop
-    : BEAUTY_LOOP_SUBJECTS.map(s => ({ id: s.id, subject: s.label, notes: '', active: true }))
-
-  function persist(next) { setBeautyLoop(next); save('lrp-beauty', next) }
-
-  function update(id, k, v)   { persist(loopData.map(b => b.id === id ? { ...b, [k]: v } : b)) }
-  function toggleActive(id)    { persist(loopData.map(b => b.id === id ? { ...b, active: !b.active } : b)) }
-  function addCustom()         { persist([...loopData, { id: uid(), subject: '', notes: '', active: true, custom: true }]) }
-  function removeCustom(id)    { persist(loopData.filter(b => b.id !== id)) }
-
-  const activeCount = loopData.filter(b => b.active).length
-
-  return (
-    <div>
-      <div className="card card-gold" style={{ marginBottom: '0.85rem' }}>
-        <p style={{ fontSize: '0.88rem', color: 'var(--ink)', lineHeight: 1.65, fontStyle: 'italic' }}>
-          These subjects rotate through your week in the Beauty Anchor block. If you use{' '}
-          <strong style={{ fontStyle: 'normal' }}>A Gentle Feast</strong>, your loop is already planned —
-          just type in which composer, artist, or hymn you're studying this term.
-          Toggle off any subjects you're not currently using.
-        </p>
-      </div>
-
-      {loopData.map(b => {
-        const preset = BEAUTY_LOOP_SUBJECTS.find(s => s.id === b.id)
-        return (
-          <div key={b.id} style={{ opacity: b.active ? 1 : 0.45, transition: 'opacity 0.15s', marginBottom: '0.5rem' }}>
-            <div className="card" style={{ padding: '0.7rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: b.active ? '0.45rem' : 0 }}>
-                <button onClick={() => toggleActive(b.id)}
-                  style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, border: `2px solid ${b.active ? 'var(--sage)' : '#ddd8ce'}`, background: b.active ? 'var(--sage)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {b.active && <Icons.Check size={11} color="white" />}
-                </button>
-                {b.custom
-                  ? <input className="form-input" style={{ flex: 1, padding: '0.25rem 0.5rem' }} value={b.subject} onChange={e => update(b.id, 'subject', e.target.value)} placeholder="Subject name…" />
-                  : <span style={{ flex: 1, fontFamily: 'var(--font-display)', fontSize: '0.9rem', color: 'var(--navy)', fontWeight: 600 }}>{b.subject}</span>
-                }
-                {b.custom && <button className="icon-btn" onClick={() => removeCustom(b.id)}><Icons.X size={13} /></button>}
-              </div>
-              {b.active && (
-                <input className="form-input" value={b.notes || ''} onChange={e => update(b.id, 'notes', e.target.value)}
-                  placeholder={preset?.prompt || 'What are you studying this term?'} style={{ fontSize: '0.88rem' }} />
-              )}
-            </div>
-          </div>
-        )
-      })}
-
-      <div style={{ display: 'flex', gap: '0.65rem', marginTop: '0.75rem' }}>
-        <button className="btn btn-outline" onClick={addCustom}><Icons.Plus size={14} />&nbsp;Add Subject</button>
-        <button className={`btn ${saved ? 'btn-sage' : 'btn-gold'}`} onClick={() => { save('lrp-beauty', loopData); setSaved(true); setTimeout(() => setSaved(false), 2000) }}>
-          <Icons.Save size={14} />&nbsp;{saved ? 'Saved ✓' : 'Save'}
-        </button>
-      </div>
-      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.5rem' }}>
-        {activeCount} active subjects
-      </p>
-    </div>
-  )
-}
-
-// ── DAY SCHEDULE EDITOR ───────────────────────────────────────────────────────
-function DayScheduleEditor({ day, blocks, setBlocks }) {
-  const [saved, setSaved] = useState(false)
-
-  const update      = (id, k, v) => setBlocks(bl => bl.map(b => b.id === id ? { ...b, [k]: v } : b))
-  const updateItem  = (id, i, v) => setBlocks(bl => bl.map(b => b.id === id ? { ...b, items: b.items.map((x, j) => j === i ? v : x) } : b))
-  const addItem     = (id)       => setBlocks(bl => bl.map(b => b.id === id ? { ...b, items: [...b.items, ''] } : b))
-  const removeItem  = (id, i)    => setBlocks(bl => bl.map(b => b.id === id ? { ...b, items: b.items.filter((_, j) => j !== i) } : b))
-  const addBlock    = ()         => setBlocks(bl => [...bl, { id: uid(), time: '', type: 'custom', items: [''] }])
-  const removeBlock = (id)       => setBlocks(bl => bl.filter(b => b.id !== id))
-  const moveBlock   = (id, dir)  => setBlocks(bl => {
-    const i = bl.findIndex(b => b.id === id), j = i + dir
-    if (j < 0 || j >= bl.length) return bl
-    const n = [...bl]; [n[i], n[j]] = [n[j], n[i]]; return n
-  })
-
-  return (
-    <div>
-      {blocks.map((b, bi) => {
-        const bt = BLOCK_TYPES[b.type] || BLOCK_TYPES.custom
-        return (
-          <div key={b.id} className="day-block" style={{ borderLeft: `3px solid ${bt.color}`, background: bt.bg }}>
-            <div className="day-block-header">
-              <div className="day-block-move">
-                <button className="icon-btn icon-btn-xs" onClick={() => moveBlock(b.id, -1)} disabled={bi === 0}><Icons.ChevU size={12} /></button>
-                <button className="icon-btn icon-btn-xs" onClick={() => moveBlock(b.id, 1)} disabled={bi === blocks.length - 1}><Icons.ChevD size={12} /></button>
-              </div>
-              <input className="form-input block-time-input" value={b.time} onChange={e => update(b.id, 'time', e.target.value)} placeholder="8:00–9:00" />
-              <select className="form-input block-type-select" value={b.type} onChange={e => update(b.id, 'type', e.target.value)}>
-                {Object.entries(BLOCK_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <button className="icon-btn" onClick={() => removeBlock(b.id)}><Icons.Trash size={13} /></button>
-            </div>
-            <div className="block-items">
-              {b.items.map((item, i) => (
-                <div key={i} className="block-item-row">
-                  <input className="form-input" value={item} onChange={e => updateItem(b.id, i, e.target.value)} placeholder="Activity…" />
-                  {b.items.length > 1 && <button className="icon-btn icon-btn-xs" onClick={() => removeItem(b.id, i)}><Icons.X size={12} /></button>}
-                </div>
-              ))}
-              <button className="text-btn" onClick={() => addItem(b.id)}>+ item</button>
-            </div>
-          </div>
-        )
-      })}
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-        <button className="btn btn-outline" onClick={addBlock}><Icons.Plus size={14} />&nbsp;Add Block</button>
-        <button className={`btn ${saved ? 'btn-sage' : 'btn-gold'}`} onClick={() => { save(`lrp-sched-${day}`, blocks); setSaved(true); setTimeout(() => setSaved(false), 2000) }}>
-          <Icons.Save size={14} />&nbsp;{saved ? 'Saved ✓' : 'Save'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── MAIN PLANNER ──────────────────────────────────────────────────────────────
-export default function Planner({ termPlan, setTermPlan, beautyLoop, setBeautyLoop, daySchedules, setDaySchedules, yearPlan, setYearPlan }) {
-  const [activeTab, setActiveTab] = useState('year')
-
-  const setDayBlocks = (day) => (fn) =>
-    setDaySchedules(ds => ({ ...ds, [day]: typeof fn === 'function' ? fn(ds[day] || []) : fn }))
-
-  const TABS = [
-    { id: 'year',      label: 'Year' },
-    { id: 'beauty',    label: 'Beauty Loop' },
-    { id: 'Monday',    label: 'Mon' },
-    { id: 'Tuesday',   label: 'Tue' },
-    { id: 'Wednesday', label: 'Wed' },
-    { id: 'Thursday',  label: 'Thu' },
-    { id: 'Friday',    label: 'Fri' },
-  ]
-
+export default function Home({ children, narrations, beautyLoop, termPlan, daySchedules, onNav, activeHabitNames }) {
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const [outdoorMins, setOutdoorMins] = useState(() => load(`lrp-outdoor-mins-${todayStr()}`, 0))
   return (
     <div className="screen">
       <div className="screen-header">
-        <h2 className="screen-title">Planner</h2>
+        <div className="ornament">✦</div>
+        <h2 className="screen-title">Living <em>Rhythm</em></h2>
+        <p className="screen-sub">{today}</p>
       </div>
-
-      <div className="tab-bar">
-        {TABS.map(t => (
-          <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
+      <TopStrip activeHabitNames={activeHabitNames} narrations={narrations} outdoorMins={outdoorMins} setOutdoorMins={setOutdoorMins} />
+      <OutdoorWeeklyCircle outdoorMins={outdoorMins} />
+      <MorningAnchor />
+      <TodaySchedule daySchedules={daySchedules} />
+      <MotherCulture />
+      {termPlan?.termName && (
+        <div className="card card-gold">
+          <h3 className="card-title">Current Term</h3>
+          <p className="card-body">{termPlan.termName}</p>
+          {termPlan.theme && <p className="card-note">Theme: {termPlan.theme}</p>}
+          {termPlan.livingBooks && <p className="card-note">Living Books: {termPlan.livingBooks}</p>}
+        </div>
+      )}
+      {beautyLoop?.length > 0 && (
+        <div className="card">
+          <h3 className="card-title">Beauty Loop</h3>
+          <div className="tag-list">{beautyLoop.map(b => <span key={b.id} className="tag tag-gold">{b.subject}</span>)}</div>
+        </div>
+      )}
+      <div className="quick-nav-grid">
+        <button className="quick-nav-btn" onClick={() => onNav('planner')}><Icons.Cal size={22} /><span>Planner</span></button>
+        <button className="quick-nav-btn" onClick={() => onNav('narration')}><Icons.Pen size={22} /><span>Narration</span></button>
+        <button className="quick-nav-btn" onClick={() => onNav('books')}><Icons.Book size={22} /><span>Books</span></button>
+        <button className="quick-nav-btn" onClick={() => onNav('lilies')}><Icons.Leaf size={22} /><span>Lilies</span></button>
+        <button className="quick-nav-btn" onClick={() => onNav('outdoor')}><Icons.Sun size={22} /><span>Outdoors</span></button>
+        <button className="quick-nav-btn" onClick={() => onNav('habits')}><Icons.Sprout size={22} /><span>Habits</span></button>
       </div>
-
-      <div className="tab-content">
-        {activeTab === 'year'   && <YearCalendar yearPlan={yearPlan || {}} setYearPlan={setYearPlan || (() => {})} />}
-        {activeTab === 'beauty' && <BeautyLoopEditor beautyLoop={beautyLoop} setBeautyLoop={setBeautyLoop} />}
-        {DAYS.map (d
-          <DayScheduleEditor key={d} day={d} blocks={daySchedules[d] || []} setBlocks={setDayBlocks(d)} />
-        ))}
+      <div className="ds-banner">
+        <p className="ds-banner-text">Curriculum by <strong>Delight &amp; Savor</strong></p>
+        <a href="https://delightandsavor.com" target="_blank" rel="noreferrer" className="ds-link">Visit the Shop ✦</a>
       </div>
     </div>
   )
